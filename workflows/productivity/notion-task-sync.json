@@ -1,0 +1,15 @@
+{
+  "name": "Notion Task Sync",
+  "nodes": [
+    {
+      "id": "trigger",
+      "name": "Check Google Calendar",
+      "type": "googleCalendar"
+    },
+    {
+      "id": "notion",
+      "name": "Sync Task to Notion",
+      "type": "notion"
+    }
+  ]
+}

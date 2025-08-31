@@ -1,0 +1,35 @@
+{
+  "name": "Dental Clinic AI Scheduler",
+  "nodes": [
+    {
+      "id": "ai-agent",
+      "name": "AI Consultation Agent",
+      "type": "openAi"
+    },
+    {
+      "id": "calendar-check",
+      "name": "Doctor Calendar Availability",
+      "type": "googleCalendar"
+    },
+    {
+      "id": "booking",
+      "name": "Create or Reschedule Appointment",
+      "type": "googleCalendar"
+    },
+    {
+      "id": "confirmation",
+      "name": "Send Confirmation to Patient",
+      "type": "emailSend"
+    },
+    {
+      "id": "queue-management",
+      "name": "Waitlist Queue",
+      "type": "function"
+    },
+    {
+      "id": "daily-summary",
+      "name": "Doctor Daily Summary",
+      "type": "emailSend"
+    }
+  ]
+}

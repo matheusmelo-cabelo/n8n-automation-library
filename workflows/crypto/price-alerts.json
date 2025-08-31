@@ -1,0 +1,20 @@
+{
+  "name": "Crypto Price Alert",
+  "nodes": [
+    {
+      "id": "trigger",
+      "name": "Check BTC Price",
+      "type": "httpRequest"
+    },
+    {
+      "id": "condition",
+      "name": "Price Above Threshold?",
+      "type": "if"
+    },
+    {
+      "id": "notify",
+      "name": "Send Alert",
+      "type": "telegram"
+    }
+  ]
+}

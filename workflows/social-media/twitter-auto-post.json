@@ -1,0 +1,20 @@
+{
+  "name": "Twitter Auto Post",
+  "nodes": [
+    {
+      "id": "schedule",
+      "name": "Schedule Trigger",
+      "type": "cron"
+    },
+    {
+      "id": "compose",
+      "name": "Compose Tweet",
+      "type": "function"
+    },
+    {
+      "id": "post",
+      "name": "Post Tweet",
+      "type": "twitter"
+    }
+  ]
+}
