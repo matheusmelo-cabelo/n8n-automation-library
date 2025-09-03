@@ -1,0 +1,563 @@
+{
+  "name": "Gestao de Trafego com IA (Roadmap Completo)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": {
+                "hour": 5
+              },
+              "unit": "days"
+            }
+          ]
+        }
+      },
+      "id": "a9a3b6f0-d5a2-4a0b-936b-73b062b3d88b",
+      "name": "Trigger Diário (5h)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        400,
+        500
+      ],
+      "notes": "Inicia o fluxo todos os dias às 5h da manhã, horário em que as plataformas de anúncio já consolidaram os dados do dia anterior."
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "returnAll": true,
+        "filters": {
+          "campaignStatus": [
+            "ENABLED"
+          ]
+        },
+        "report": "campaign",
+        "fields": [
+          "metrics.cost_micros",
+          "metrics.conversions_value",
+          "metrics.conversions",
+          "campaign.id",
+          "campaign.name",
+          "campaign_budget.amount_micros",
+          "campaign.bidding_strategy_type"
+        ],
+        "dateRange": "YESTERDAY"
+      },
+      "id": "e96f1057-a57e-40d6-8472-358b975e2b4d",
+      "name": "Get Google Ads Campaigns",
+      "type": "n8n-nodes-base.googleAds",
+      "typeVersion": 1,
+      "position": [
+        640,
+        400
+      ],
+      "credentials": {
+        "googleAdsApi": {
+          "id": "={{$env.GOOGLE_ADS_CRED_ID}}",
+          "name": "Google Ads Credential"
+        }
+      },
+      "notes": "[FASE 1] Busca dados de performance de todas as campanhas ATIVAS do Google Ads, referentes ao dia anterior (YESTERDAY). O custo e orçamento vêm em 'micros', precisarão de conversão. Adicionado 'bidding_strategy_type' para a Fase 2."
+    },
+    {
+      "parameters": {
+        "jsCode": "const googleData = $items('Get Google Ads Campaigns').map(item => item.json);
+const metaData = $items('Get Meta Ads Campaigns').map(item => item.json);
+
+// FASE 4: Dados do CRM seriam lidos aqui
+// const crmData = $items('Get CRM Data').map(item => item.json);
+
+const processedData = [];
+
+// Process Google Data
+googleData.forEach(g => {
+  const campaign = g.campaign;
+  const metrics = g.metrics;
+  if (!campaign.name.includes('[AUTO_OPTIMIZE]')) return;
+
+  // FASE 4: Lógica para cruzar com CRM e calcular ROI real iria aqui
+
+  const cost = (metrics.costMicros || 0) / 1000000;
+  const conversions = metrics.conversions || 0;
+  const revenue = (metrics.conversionsValue || 0); // Este seria substituído pelo valor do CRM na Fase 4
+
+  processedData.push({
+    platform: 'google',
+    campaign_id: campaign.id,
+    campaign_name: campaign.name,
+    cost: cost,
+    cpa: conversions > 0 ? cost / conversions : cost,
+    roi: cost > 0 ? revenue / cost : 0,
+    current_budget: (g.campaignBudget.amountMicros || 0) / 1000000
+    // FASE 3: Dados de criativos seriam agregados aqui
+  });
+});
+
+// Process Meta Data (similar logic)
+metaData.forEach(m => {
+  const campaign = m.campaign;
+  const metrics = m.metrics;
+  if (!campaign.name.includes('[AUTO_OPTIMIZE]')) return; // Assuming similar tagging for Meta Ads
+
+  // FASE 4: Lógica para cruzar com CRM e calcular ROI real iria aqui
+
+  const cost = (metrics.spend || 0);
+  const conversions = metrics.conversions || 0;
+  const revenue = (metrics.value || 0);
+
+  processedData.push({
+    platform: 'meta',
+    campaign_id: campaign.id,
+    campaign_name: campaign.name,
+    cost: cost,
+    cpa: conversions > 0 ? cost / conversions : cost,
+    roi: cost > 0 ? revenue / cost : 0,
+    current_budget: (m.budget_amount || 0)
+    // FASE 3: Dados de criativos seriam agregados aqui
+  });
+});
+
+return processedData;
+"
+      },
+      "id": "e0b0e58c-848f-4d6d-88b1-3e5e4d1f271a",
+      "name": "Unificar e Processar Dados",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        500
+      ],
+      "notes": "[FASE 1, 3, 4] Este nó prepara os dados para a IA. Nas fases futuras, este código será expandido para: 1) Juntar dados de criativos (Fase 3). 2) Juntar dados do CRM para calcular um ROI real (Fase 4)."
+    },
+    {
+      "parameters": {
+        "model": "gpt-4o",
+        "jsonResponse": true,
+        "messages": [
+          {
+            "role": "system",
+            "content": "Você é um analista de tráfego sênior. Analise o array de campanhas e, para CADA uma, retorne uma ação estratégica em JSON. As regras são:
+
+[REGRAS FASE 1 - Orçamento]
+1. Se CPA > R$ 50,00, ação é 'pausar_campanha'.
+2. Se ROI > 10, ação é 'aumentar_orcamento_20'.
+
+[REGRAS FASE 2 - Lances]
+3. Se uma campanha de tCPA tem CPA 20% abaixo da meta e poucas conversões, ação é 'aumentar_tCPA_15'.
+
+[REGRAS FASE 3 - Criativos]
+4. (Dados de criativos não fornecidos ainda) Se um criativo tiver performance muito baixa, ação seria 'pausar_criativo'.
+
+5. Para o resto, a ação é 'manter'.
+
+Responda APENAS com um objeto JSON com a chave 'actions', contendo um array de objetos. Cada objeto deve ter: 'platform', 'campaign_id', 'campaign_name', 'cpa', 'roi', 'action' e 'justificativa'."
+          },
+          {
+            "role": "user",
+            "content": "={{JSON.stringify($json)}}"
+          }
+        ],
+        "options": {}
+      },
+      "id": "e44d33a1-79e4-41d3-9d41-4775d714571c",
+      "name": "Análise e Decisão IA",
+      "type": "n8n-nodes-base.openAiChat",
+      "typeVersion": 2,
+      "position": [
+        1340,
+        500
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "={{$env.OPENAI_CRED_ID}}",
+          "name": "OpenAI Credential"
+        }
+      },
+      "notes": "[FASE 1, 2, 3] Cérebro da operação. O prompt já inclui placeholders para as regras de negócio das fases futuras. À medida que novos dados são fornecidos (criativos, lances), a IA poderá usar essas regras."
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "d0434b7f-366a-4a6c-ac63-ecf925b42661",
+      "name": "Para Cada Ação",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 2,
+      "position": [
+        1560,
+        500
+      ],
+      "notes": "Itera sobre cada ação recomendada pela IA para executá-las uma a uma."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.action}}",
+              "operation": "equal",
+              "value2": "pausar_campanha"
+            },
+            {
+              "value1": "={{$json.action}}",
+              "operation": "equal",
+              "value2": "aumentar_orcamento_20"
+            },
+            {
+              "value1": "={{$json.action}}",
+              "operation": "equal",
+              "value2": "aumentar_tCPA_15"
+            },
+            {
+              "value1": "={{$json.action}}",
+              "operation": "equal",
+              "value2": "pausar_criativo"
+            }
+          ]
+        }
+      },
+      "id": "4220377c-747d-419b-b9f1-f06b64f331d2",
+      "name": "Qual Ação Tomar?",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 2,
+      "position": [
+        1960,
+        500
+      ],
+      "notes": "Roteia o fluxo com base na ação. As saídas para as Fases 2 e 3 já estão mapeadas e prontas para serem conectadas aos nós de execução."
+    },
+    {
+      "parameters": {
+        "documentId": "={{$env.GOOGLE_SHEET_ID}}",
+        "sheetName": "Log Otimizacao IA",
+        "operation": "append",
+        "columns": {
+          "mappingMode": "mapAll",
+          "value": {
+            "timestamp": "={{$now.toISO()}}",
+            "platform": "={{$json.platform}}",
+            "campaign_id": "={{$json.campaign_id}}",
+            "campaign_name": "={{$json.campaign_name}}",
+            "cpa": "={{$json.cpa}}",
+            "roi": "={{$json.roi}}",
+            "acao_recomendada": "={{$json.action}}",
+            "justificativa_ia": "={{$json.justificativa}}",
+            "status_execucao": "Pendente"
+          }
+        },
+        "options": {
+          "valueInputMode": "raw"
+        }
+      },
+      "id": "ac886472-35b9-4f71-a48f-3ed458d92797",
+      "name": "Log da Decisão",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [
+        1760,
+        500
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "={{$env.GOOGLE_CRED_ID}}",
+          "name": "Google Sheets Credential"
+        }
+      },
+      "notes": "Cria um registro de auditoria ANTES de tentar executar a ação. Isso é crucial para saber o que a automação 'pretendia' fazer, mesmo que a execução falhe."
+    },
+    {
+      "parameters": {
+        "resource": "campaign",
+        "operation": "getAll",
+        "returnAll": true,
+        "dateRange": "YESTERDAY"
+      },
+      "id": "670da4d8-d695-46f4-b903-51b6a1cf8d07",
+      "name": "Get Meta Ads Campaigns",
+      "type": "n8n-nodes-base.metaAds",
+      "typeVersion": 1,
+      "position": [
+        640,
+        600
+      ],
+      "credentials": {
+        "metaAdsApi": {
+          "id": "={{$env.META_ADS_CRED_ID}}",
+          "name": "Meta Ads Credential"
+        }
+      },
+      "notes": "[FASE 1] Busca dados de performance de todas as campanhas do Meta Ads."
+    },
+    {
+      "parameters": {},
+      "id": "52ddf7f0-030f-4318-97ef-466d1f37e492",
+      "name": "--- COLETA DE DADOS ---",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        640,
+        280
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "18f407fa-3904-469b-9804-98eb82f42a57",
+      "name": "--- PROCESSAMENTO ---",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1120,
+        420
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "62e12817-48f1-4389-8032-9b09a67a5105",
+      "name": "--- DECISÃO IA ---",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1340,
+        420
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "5f340866-93bb-4033-ae8e-20f4f9f4d1e2",
+      "name": "--- EXECUÇÃO ---",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1960,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "content": "Ação: Pausar Campanha\n(Fase 1)",
+        "height": 120
+      },
+      "id": "60e90c88-e24c-42b7-a36c-9c6f2a281513",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        2200,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "content": "Ação: Aumentar Orçamento\n(Fase 1)"
+      },
+      "id": "3134268e-4f51-4f36-963d-4c3e80a06801",
+      "name": "Sticky Note 1",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        2200,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "content": "Ação: Ajustar Lance (tCPA)\n(Fase 2)"
+      },
+      "id": "b3de0d0f-48d6-419b-8d19-d045d0ed98b9",
+      "name": "Sticky Note 2",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        2200,
+        560
+      ]
+    },
+    {
+      "parameters": {
+        "content": "Ação: Pausar Criativo\n(Fase 3)"
+      },
+      "id": "233d2673-9a3c-411a-ae9c-0975878832a8",
+      "name": "Sticky Note 3",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        2200,
+        700
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "ad",
+        "operation": "getAll"
+      },
+      "id": "e44d33a1-79e4-41d3-9d41-4775d7145715",
+      "name": "Get Meta Ads (Criativos)",
+      "type": "n8n-nodes-base.metaAds",
+      "typeVersion": 1,
+      "position": [
+        880,
+        600
+      ],
+      "disabled": true,
+      "notes": "[FASE 3 - DESABILITADO] Este nó buscaria os dados de todos os criativos. Para implementar, ele deve ser colocado dentro de um loop que passa por cada campanha, para buscar apenas os criativos relevantes.",
+      "credentials": {}
+    },
+    {
+      "parameters": {
+        "url": "https://api.mycrm.com/v1/deals",
+        "options": {}
+      },
+      "id": "e44d33a1-79e4-41d3-9d41-4775d7145716",
+      "name": "Get CRM Data",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        880,
+        720
+      ],
+      "disabled": true,
+      "notes": "[FASE 4 - DESABILITADO] Este nó representa a conexão com seu CRM (ex: HubSpot, Salesforce). Você precisará configurar a URL, autenticação e os filtros para buscar negócios ganhos ontem, trazendo o GCLID/FBCLID e o valor do negócio.",
+      "credentials": {}
+    },
+    {
+      "parameters": {
+        "content": "Ação: Manter\n(Default)"
+      },
+      "id": "233d2673-9a3c-411a-ae9c-0975878832a9",
+      "name": "Sticky Note 4",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        2200,
+        840
+      ]
+    }
+  ],
+  "connections": {
+    "Trigger Diário (5h)": {
+      "main": [
+        [
+          {
+            "node": "Get Google Ads Campaigns",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get Meta Ads Campaigns",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Google Ads Campaigns": {
+      "main": [
+        [
+          {
+            "node": "Unificar e Processar Dados",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Unificar e Processar Dados": {
+      "main": [
+        [
+          {
+            "node": "Análise e Decisão IA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Análise e Decisão IA": {
+      "main": [
+        [
+          {
+            "node": "Para Cada Ação",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Para Cada Ação": {
+      "main": [
+        [
+          {
+            "node": "Log da Decisão",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Qual Ação Tomar?": {
+      "main": [
+        [
+          {
+            "node": "Sticky Note",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Sticky Note 1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Sticky Note 2",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Sticky Note 3",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Sticky Note 4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log da Decisão": {
+      "main": [
+        [
+          {
+            "node": "Qual Ação Tomar?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Meta Ads Campaigns": {
+      "main": [
+        [
+          {
+            "node": "Unificar e Processar Dados",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}
